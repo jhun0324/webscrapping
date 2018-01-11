@@ -76,7 +76,7 @@ def navigate_to_pdf(url, browser, doi_underscored):
 		realpdflink = pdfbutton.get_attribute('href')
 		return downloadpdf(realpdflink, doi_underscored)
 		# WE HAVE SPRINGER PDFS!!!
-	elif domain == 'http://www.mdpi.com/':
+	elif domain == 'www.mdpi.com':
 		pdfbutton = browser.find_element_by_link_text("Full-Text PDF")
 		realpdflink = pdfbutton.get_attribute('href')
 		return downloadpdf(realpdflink, doi_underscored)
