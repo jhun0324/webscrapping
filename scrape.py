@@ -84,7 +84,7 @@ def searchForKeyword(browser, keyword):
 	numResults = int(results.text.replace(",", ""))
 
 	# manually specify the number of meta data you want to download
-	numResults = 1012
+	numResults = 1
 	return numResults
 
 
@@ -133,7 +133,7 @@ def downloadMetaDataHtml(browser, numResults):
 
 
 def getMetaDataDataframe(chromeOptions):
-	df = pd.DataFrame(columns=['DOI', 'title', 'author', 'address', 'downloaded'])
+	df = pd.DataFrame(columns=['DOI', 'title', 'author', 'downloaded', 'address', 'author countries'])
 	dataFrameIndex = 1
 
 	for filename in os.listdir(pathToMetaData):
@@ -163,9 +163,10 @@ def getMetaDataDataframe(chromeOptions):
 				doi = article.find('td', string='DI ').next_sibling.text.strip()
 				author = re.sub(r'\n+\s+', '; ', article.find('td', string='AU ').next_sibling.text.strip())
 				title = re.sub(r'\s+', ' ', article.find('td', string='TI ').next_sibling.text.strip())
-				address = None
 				downloaded = process_doi(doi, chromeOptions)
-				df.loc[dataFrameIndex] = [doi, title, author, address, downloaded]
+				address = re.sub(r'\s+', ' ', article.find('td', string='C1 ').next_sibling.text.strip())
+				authorCountries = None
+				df.loc[dataFrameIndex] = [doi, title, author, downloaded, address, authorCountries]
 				dataFrameIndex += 1
 	return df
 
