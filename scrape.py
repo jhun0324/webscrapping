@@ -84,7 +84,7 @@ def searchForKeyword(browser, keyword):
 	numResults = int(results.text.replace(",", ""))
 
 	# manually specify the number of meta data you want to download
-	numResults = 1
+	# numResults = 1
 	return numResults
 
 
