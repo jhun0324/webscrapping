@@ -1,130 +1,67 @@
 import os
 import re
 import time
-import requests
 import shutil
-import bs4 as bs
-from bs4 import BeautifulSoup
+import requests
 import pandas as pd
-from urllib.parse import urlparse
+from bs4 import BeautifulSoup
 from selenium import webdriver
-from selenium.webdriver.support.select import Select
 from collections import Counter
+from urllib.parse import urlparse
+from selenium.webdriver.support.select import Select
 
-# global varibles: chromeOptions, pathToPDF, categories, download_dir
-
-
-def savefile(html):
-	f = open("html.html", "w")
-	f.write(html)
-	f.close()
-
-def downloadpdf(pdfurl, filename):
-	pdfresponse = requests.get(pdfurl)
-	file = open(pathToPDF + filename + '.pdf', 'wb')
-	file.write(pdfresponse.content)
-	if os.path.getsize(file.name) < 20000:
-		print("File size seems too small. Download may have failed for ", filename)
-		return False
-	file.close()
-	return True
-
-def process_doi(doi):
-	doi_underscored = doi.replace('/', '_')
-	chromeOptions = webdriver.ChromeOptions()
-	prefs = {"download.default_directory": pathToPDF}
-	chromeOptions.add_experimental_option("prefs", prefs)
-	browser = webdriver.Chrome(executable_path=os.getcwd() + os.sep + 'chromedriver', chrome_options=chromeOptions)
-	browser.get('http://doi.org/' + doi)
-	url = browser.current_url
-	downloaded = navigate_to_pdf(url, browser, doi_underscored)
-	browser.close()
-	return downloaded
-
-def navigate_to_pdf(url, browser, doi_underscored):
-	domain = urlparse(url)[1]
-	domains.append(domain)
-	if domain == 'www.sciencedirect.com':
-		downloadpdfbutton = browser.find_element_by_partial_link_text("Download")
-		downloadpdfbutton.click()
-		getpdf = browser.find_element_by_link_text("Article")
-
-		# cannot just grab url from html because Python requests library does not redirect correctly to the PDF
-		getpdf.click()
-		browser.switch_to.window(browser.window_handles[1])
-
-		# sometimes takes a while to redirect to the actual pdf, so we wait until it does redirect
-		while urlparse(browser.current_url)[1] == 'www.sciencedirect.com':
-			time.sleep(1)
-		pdfurl = browser.current_url
-		browser.close()
-		browser.switch_to.window(browser.window_handles[0])
-		# WE HAVE SCIENCEDIRECT PDFS!!!
-		return downloadpdf(pdfurl, doi_underscored)
-	elif domain == 'onlinelibrary.wiley.com':
-		getpdf = browser.find_element_by_xpath("//li[@class='article-support__item--pdf ']/a")  # find pdf button
-		pdfurl = getpdf.get_attribute('href')  # get link from pdf button
-		r = requests.get(pdfurl,
-						 allow_redirects=True)  # go to this link (not pdf link yet, only links to a redirecting site)
-		rsoup = BeautifulSoup(r.content, 'lxml')
-		realpdflink = rsoup.find("iframe", {"id": "pdfDocument"})[
-			'src']  # from redirected site, fish out the real pdf link
-		return downloadpdf(realpdflink, doi_underscored)
-		# WE HAVE WILEY ONLINE LIBRARY PDFS!!!
-	elif domain == 'rd.springer.com':
-		pdfbutton = browser.find_element_by_xpath("//a[@title='Download this article in PDF format']")
-		realpdflink = pdfbutton.get_attribute('href')
-		return downloadpdf(realpdflink, doi_underscored)
-		# WE HAVE SPRINGER PDFS!!!
-	elif domain == 'www.mdpi.com':
-		pdfbutton = browser.find_element_by_link_text("Full-Text PDF")
-		realpdflink = pdfbutton.get_attribute('href')
-		return downloadpdf(realpdflink, doi_underscored)
-	return False
+# dependencies: shutil, pandas, bs4, selenium, lxml
+# global variables: keywords, categories, givenKeywords, pathToMetaData, pathToPDF, url, domains
 
 
+keywords = ['sustainable development']
+categories = ["Environmental Sciences", "Environmental Studies", "Green & Sustainable Science & Technology"]
+givenKeywords = []
 
-def isKeywordInArticle(articleKeywords, keywords):
-	return True
+# change the options of displaying pandas dataframe
+pd.set_option('display.max_rows', 100)
+pd.set_option('display.max_columns', 5)
+pd.set_option('display.max_colwidth', 100)
+pd.set_option('display.width', None)
 
-def hasAuthorKeywords(article):
-	if article.find('td', string='DE ') == None:
-		return False
-	return True
+# path to the directory to download meta data
+pathToMetaData = os.getcwd() + os.sep + 'abstracts' + os.sep
 
-def hasAdditionalKeywords(article):
-	if article.find('td', string='ID ') == None:
-		return False
-	return True
+# path to the directory to download PDFs
+pathToPDF = os.getcwd() + os.sep + 'pdf' + os.sep
 
-def hasDOI(article):
-	if article.find('td', string='DI ') == None:
-		return False
-	return True
+url = "https://www.webofknowledge.com"
+domains = []
 
-def setup(metaDataDirName = '/abstracts', pdfDirName = '/pdf',
-		  removeMetaDataDir = True, removePdfDir = False):
 
-	metaDataDirPath = os.getcwd() + metaDataDirName
-	pdfDirPath = os.getcwd() + pdfDirName
+def setup(removeMetaDataDir=True, removePdfDir=False):
+	"""
+	:param removeMetaDataDir: If it is True, existing directory to download meta data will be removed and created again.
+							If it is False, meta data will be downloaded to existing directory.
+	:param removePdfDir: If it is True, existing directory to download PDFs will be removed and created again.
+						If it is False, PDFs will be downloaded to existing directory.
+
+	:return: None
+	"""
 
 	# remove meta data directory and make the same one again
-	if not os.path.exists(metaDataDirPath):
-		os.makedirs(metaDataDirPath)
+	if not os.path.exists(pathToMetaData):
+		os.makedirs(pathToMetaData)
 	else:
 		if removeMetaDataDir:
-			shutil.rmtree(metaDataDirPath)
-			os.makedirs(metaDataDirPath)
+			shutil.rmtree(pathToMetaData)
+			os.makedirs(pathToMetaData)
 
 	# remove pdf directory and make the same one again
-	if not os.path.exists(pdfDirPath):
-		os.makedirs(pdfDirPath)
+	if not os.path.exists(pathToPDF):
+		os.makedirs(pathToPDF)
 	else:
 		if removePdfDir:
-			shutil.rmtree(pdfDirPath)
-			os.makedirs(pdfDirPath)
+			shutil.rmtree(pathToPDF)
+			os.makedirs(pathToPDF)
 
-def searchForKeyword(keyword) :
+
+def searchForKeyword(browser, keyword):
 	browser.get(url)
 
 	# go to the advanced search section
@@ -144,12 +81,14 @@ def searchForKeyword(keyword) :
 
 	# find out how many results are found
 	results = browser.find_element_by_id("hitCount.top")
-	numResults = int(results.text.replace(",",""))
+	numResults = int(results.text.replace(",", ""))
+
+	# manually specify the number of meta data you want to download
 	numResults = 1012
 	return numResults
 
 
-def downloadMetaDataHtml(numResults):
+def downloadMetaDataHtml(browser, numResults):
 	for i in range(1, numResults+1, 500):
 		# choose 'Save to Other File Formats'
 		saveToMenu = browser.find_element_by_id("saveToMenu")
@@ -193,15 +132,15 @@ def downloadMetaDataHtml(numResults):
 		closebutton.click()
 
 
-def getMetaDataDataframe(download_dir):
-	df = pd.DataFrame(columns = ['DOI', 'title', 'author', 'address', 'downloaded'])
+def getMetaDataDataframe(chromeOptions):
+	df = pd.DataFrame(columns=['DOI', 'title', 'author', 'address', 'downloaded'])
 	dataFrameIndex = 1
 
-	for filename in os.listdir(download_dir):
+	for filename in os.listdir(pathToMetaData):
 		print(filename)
 		if '.html' not in filename:
 			continue
-		soup = bs.BeautifulSoup(open(os.getcwd() + '/abstracts/' + filename).read(), 'html5lib')
+		soup = BeautifulSoup(open(os.getcwd() + '/abstracts/' + filename).read(), 'html5lib')
 		indicatorList = soup.findAll('table')
 
 		numOfIndicator = len(indicatorList)
@@ -220,55 +159,144 @@ def getMetaDataDataframe(download_dir):
 				additionalKeywords = []
 			articleKeywords = authorKeywords + additionalKeywords
 
-			if isKeywordInArticle(articleKeywords, keywords) and hasDOI(article):
+			if isArticleKeywordsInGivenKeywords(articleKeywords) and hasDOI(article):
 				doi = article.find('td', string='DI ').next_sibling.text.strip()
 				author = re.sub(r'\n+\s+', '; ', article.find('td', string='AU ').next_sibling.text.strip())
 				title = re.sub(r'\s+', ' ', article.find('td', string='TI ').next_sibling.text.strip())
 				address = None
-				downloaded = process_doi(doi)
+				downloaded = process_doi(doi, chromeOptions)
 				df.loc[dataFrameIndex] = [doi, title, author, address, downloaded]
 				dataFrameIndex += 1
 	return df
 
 
-keywords = ['sustainable development']
-categories = ["Environmental Sciences",
-			  "Environmental Studies",
-			  "Green & Sustainable Science & Technology"]
-
-pd.set_option('display.max_rows', 100)
-pd.set_option('display.max_columns', 5)
-pd.set_option('display.max_colwidth', 100)
-pd.set_option('display.width', None)
-
-# path to the directory to download meta data
-download_dir = os.getcwd() + '/abstracts'
-
-# path to the directory to download PDFs
-pathToPDF = os.getcwd() + os.sep + 'pdf' + os.sep
-
-# change the default directory to download files to
-chromeOptions = webdriver.ChromeOptions()
-prefs = {"download.default_directory": download_dir}
-chromeOptions.add_experimental_option("prefs", prefs)
-
-browser = webdriver.Chrome(executable_path=os.getcwd() + os.sep + 'chromedriver', chrome_options=chromeOptions) # replace with .Firefox(), or with the browser of your choice
-browser.implicitly_wait(5) # second
-url = "https://www.webofknowledge.com"
-
-domains = []
-
-setup()
-
-for keyword in keywords:
-	numResults = searchForKeyword(keyword)
-	downloadMetaDataHtml(numResults)
-	df = getMetaDataDataframe(download_dir)
-
-print(df)
-print(Counter(domains))
+def isArticleKeywordsInGivenKeywords(articleKeywords):
+	return True
 
 
+def hasAuthorKeywords(article):
+	if article.find('td', string='DE ') is None:
+		return False
+	return True
+
+
+def hasAdditionalKeywords(article):
+	if article.find('td', string='ID ') is None:
+		return False
+	return True
+
+
+def hasDOI(article):
+	if article.find('td', string='DI ') is None:
+		return False
+	return True
+
+
+def savefile(html):
+	f = open("html.html", "w")
+	f.write(html)
+	f.close()
+
+
+def downloadpdf(pdfurl, filename):
+	pdfresponse = requests.get(pdfurl)
+	file = open(pathToPDF + filename + '.pdf', 'wb')
+	file.write(pdfresponse.content)
+	if os.path.getsize(file.name) < 20000:
+		print("File size seems too small. Download may have failed for ", filename)
+		return False
+	file.close()
+	return True
+
+
+def process_doi(doi, chromeOptions):
+	"""
+	:param doi: DOI
+	:param chromeOptions: chrome option for the default download directory
+	:return: Boolean
+			True if pdf file is successfully downloaded.
+			False if downloading failed
+	"""
+	doi_underscored = doi.replace('/', '_')
+	browser = webdriver.Chrome(executable_path=os.getcwd() + os.sep + 'chromedriver', chrome_options=chromeOptions)
+	browser.get('http://doi.org/' + doi)
+	currentUrl = browser.current_url
+	downloaded = navigate_to_pdf(currentUrl, browser, doi_underscored)
+	browser.close()
+	return downloaded
+
+
+def navigate_to_pdf(currentUrl, browser, doi_underscored):
+	domain = urlparse(currentUrl)[1]
+	domains.append(domain)
+	if domain == 'www.sciencedirect.com':
+		downloadpdfbutton = browser.find_element_by_partial_link_text("Download")
+		downloadpdfbutton.click()
+		getpdf = browser.find_element_by_link_text("Article")
+
+		# cannot just grab url from html because Python requests library does not redirect correctly to the PDF
+		getpdf.click()
+		browser.switch_to.window(browser.window_handles[1])
+
+		# sometimes takes a while to redirect to the actual pdf, so we wait until it does redirect
+		while urlparse(browser.current_url)[1] == 'www.sciencedirect.com':
+			time.sleep(1)
+		pdfurl = browser.current_url
+		browser.close()
+		browser.switch_to.window(browser.window_handles[0])
+		# WE HAVE SCIENCEDIRECT PDFs!!!
+		return downloadpdf(pdfurl, doi_underscored)
+	elif domain == 'onlinelibrary.wiley.com':
+		getpdf = browser.find_element_by_xpath("//li[@class='article-support__item--pdf ']/a")  # find pdf button
+		pdfurl = getpdf.get_attribute('href')  # get link from pdf button
+		# go to this link (not pdf link yet, only links to a redirecting site)
+		r = requests.get(pdfurl, allow_redirects=True)
+		rsoup = BeautifulSoup(r.content, 'lxml')
+		realpdflink = rsoup.find("iframe", {"id": "pdfDocument"})[
+			'src']  # from redirected site, fish out the real pdf link
+		return downloadpdf(realpdflink, doi_underscored)
+		# WE HAVE WILEY ONLINE LIBRARY PDFs!!!
+	elif domain == 'rd.springer.com':
+		pdfbutton = browser.find_element_by_xpath("//a[@title='Download this article in PDF format']")
+		realpdflink = pdfbutton.get_attribute('href')
+		return downloadpdf(realpdflink, doi_underscored)
+		# WE HAVE SPRINGER PDFs!!!
+	elif domain == 'www.mdpi.com':
+		pdfbutton = browser.find_element_by_link_text("Full-Text PDF")
+		realpdflink = pdfbutton.get_attribute('href')
+		return downloadpdf(realpdflink, doi_underscored)
+	return False
+
+
+def main():
+	# change the default download directory to meta data directory
+	chromeOptions = webdriver.ChromeOptions()
+	prefs = {"download.default_directory": pathToMetaData}
+	chromeOptions.add_experimental_option("prefs", prefs)
+
+	# replace with .Firefox(), or with the browser of your choice
+	browser = webdriver.Chrome(executable_path=os.getcwd() + os.sep + 'chromedriver', chrome_options=chromeOptions)
+	browser.implicitly_wait(5)  # second
+
+	setup()
+
+	for keyword in keywords:
+		numResults = searchForKeyword(browser, keyword)
+		downloadMetaDataHtml(browser, numResults)
+
+	# change the default download directory to PDF directory
+	chromeOptions = webdriver.ChromeOptions()
+	prefs = {"download.default_directory": pathToPDF}
+	chromeOptions.add_experimental_option("prefs", prefs)
+
+	df = getMetaDataDataframe(chromeOptions)
+
+	print(df)
+	print(Counter(domains))
+
+
+if __name__ == '__main__':
+	main()
 
 
 
