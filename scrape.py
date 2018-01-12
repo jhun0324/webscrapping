@@ -257,7 +257,7 @@ def navigate_to_pdf(currentUrl, browser, doi_underscored):
 			'src']  # from redirected site, fish out the real pdf link
 		return downloadpdf(realpdflink, doi_underscored)
 		# WE HAVE WILEY ONLINE LIBRARY PDFs!!!
-	elif domain == 'rd.springer.com':
+	elif domain == 'link.springer.com':
 		pdfbutton = browser.find_element_by_xpath("//a[@title='Download this article in PDF format']")
 		realpdflink = pdfbutton.get_attribute('href')
 		return downloadpdf(realpdflink, doi_underscored)
@@ -284,6 +284,8 @@ def main():
 	for keyword in keywords:
 		numResults = searchForKeyword(browser, keyword)
 		downloadMetaDataHtml(browser, numResults)
+
+	browser.close()
 
 	# change the default download directory to PDF directory
 	chromeOptions = webdriver.ChromeOptions()
