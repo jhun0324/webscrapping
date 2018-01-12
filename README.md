@@ -17,7 +17,7 @@ pip install selenium
 
 Chromedriver
 
-Download the [Chromedriver](https://sites.google.com/a/chromium.org/chromedriver/downloads). In order to use the selenium webdriver, we have to download drivers for the browswer we will use. We chose Chrome for this program. After downloading, **place the Chromedriver module in the same folder as scrape.py**. 
+Download the [Chromedriver](https://sites.google.com/a/chromium.org/chromedriver/downloads). After downloading, **place the Chromedriver module in the same folder as scrape.py**. This is used for selenium.
 
 
 Finally, you may run the file.
