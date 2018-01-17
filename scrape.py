@@ -1,13 +1,16 @@
 import os
 import re
 import time
+import yaml
+import spacy
+import pickle
 import shutil
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
 from selenium import webdriver
-from collections import Counter
 from urllib.parse import urlparse
+from collections import Counter, defaultdict
 from selenium.webdriver.support.select import Select
 
 # dependencies: shutil, pandas, bs4, selenium, lxml
@@ -30,8 +33,31 @@ pathToMetaData = os.getcwd() + os.sep + 'abstracts' + os.sep
 # path to the directory to download PDFs
 pathToPDF = os.getcwd() + os.sep + 'pdf' + os.sep
 
+# path to the previous index
+pathToIndex = os.getcwd() + os.sep + 'index.p'
+
+
 url = "https://www.webofknowledge.com"
 domains = []
+
+# path to countries.yml (list of the synonyms of each country)
+pathToCountries = os.getcwd() + os.sep + 'countries.yml'
+
+# path to metadata.tsv
+pathToMetaDataTSV = os.getcwd() + os.sep + 'metadata.tsv'
+
+if os.path.isfile(pathToMetaDataTSV):
+	df = pd.read_csv(pathToMetaDataTSV, sep='\t', header=0, names=['DOI', 'title', 'author', 'downloaded', 'address', 'author countries'])
+	print(df)
+else:
+	df = pd.DataFrame(columns=['DOI', 'title', 'author', 'downloaded', 'address', 'author countries'])
+
+# initiate spacy nlp
+nlp = spacy.load('en', parser=False)
+
+# load countries.yml
+with open(pathToCountries, "r") as f:
+	countries = yaml.load(f)
 
 
 def setup(removeMetaDataDir=True, removePdfDir=False):
@@ -81,15 +107,15 @@ def searchForKeyword(browser, keyword):
 
 	# find out how many results are found
 	results = browser.find_element_by_id("hitCount.top")
-	numResults = int(results.text.replace(",", ""))
+	# numResults = int(results.text.replace(",", ""))
 
 	# manually specify the number of meta data you want to download
-	# numResults = 1
+	numResults = 580
 	return numResults
 
 
 def downloadMetaDataHtml(browser, numResults):
-	for i in range(1, numResults+1, 500):
+	for i in range(len(df.index)+1, numResults+1, 500):
 		# choose 'Save to Other File Formats'
 		saveToMenu = browser.find_element_by_id("saveToMenu")
 		Select(saveToMenu).select_by_visible_text("Save to Other File Formats")
@@ -133,8 +159,8 @@ def downloadMetaDataHtml(browser, numResults):
 
 
 def getMetaDataDataframe(chromeOptions):
-	df = pd.DataFrame(columns=['DOI', 'title', 'author', 'downloaded', 'address', 'author countries'])
-	dataFrameIndex = 1
+	# df = pd.DataFrame(columns=['DOI', 'title', 'author', 'downloaded', 'address', 'author countries'])
+	dataFrameIndex = len(df.index) + 1
 
 	for filename in os.listdir(pathToMetaData):
 		print(filename)
@@ -161,14 +187,18 @@ def getMetaDataDataframe(chromeOptions):
 
 			if isArticleKeywordsInGivenKeywords(articleKeywords) and hasDOI(article):
 				doi = article.find('td', string='DI ').next_sibling.text.strip()
+				if doi in df['DOI']:
+					continue
 				author = re.sub(r'\n+\s+', '; ', article.find('td', string='AU ').next_sibling.text.strip())
 				title = re.sub(r'\s+', ' ', article.find('td', string='TI ').next_sibling.text.strip())
 				downloaded = process_doi(doi, chromeOptions)
-				address = re.sub(r'\s+', ' ', article.find('td', string='C1 ').next_sibling.text.strip())
-				authorCountries = None
+				addresses = list(article.find('td', string='C1 ').next_sibling.stripped_strings)
+				addresses = [re.sub(r'\.$', '', re.sub(r'\s+', ' ', address)) for address in addresses]
+				address = '; '.join(addresses)
+				authorCountries = extractAuthorCountries(addresses)
 				df.loc[dataFrameIndex] = [doi, title, author, downloaded, address, authorCountries]
 				dataFrameIndex += 1
-	return df
+	# return df
 
 
 def isArticleKeywordsInGivenKeywords(articleKeywords):
@@ -193,6 +223,29 @@ def hasDOI(article):
 	return True
 
 
+def extractAuthorCountries(addresses):
+	country_dict = defaultdict(lambda: 0, {})
+
+	for address in addresses:
+		switch = False
+		address = re.sub(r'\bUSA\b', 'US', address)
+		parsedText = nlp(address)
+		gpe = [ent.text for ent in parsedText.ents if ent.label_ == 'GPE' or ent.label_ == 'ORG']
+
+		for loc in gpe:
+			for country in countries.keys():
+				for syn in countries[country]:
+					if re.search(syn, loc, re.U & re.I):
+						country_dict[country] += 1
+						switch = True
+				if switch:
+					break
+			if switch:
+				break
+
+	return ', '.join('{}: {}'.format(country, count) for country, count in sorted(country_dict.items()))
+
+
 def savefile(html):
 	f = open("html.html", "w")
 	f.write(html)
@@ -204,7 +257,8 @@ def downloadpdf(pdfurl, filename):
 	file = open(pathToPDF + filename + '.pdf', 'wb')
 	file.write(pdfresponse.content)
 	if os.path.getsize(file.name) < 20000:
-		print("File size seems too small. Download may have failed for ", filename)
+		os.remove(pathToPDF + filename + '.pdf')
+		file.close()
 		return False
 	file.close()
 	return True
@@ -287,19 +341,29 @@ def main():
 
 	browser.close()
 
+	if os.path.isfile(pathToMetaData + 'savedrecs.html'):
+		os.rename(pathToMetaData + 'savedrecs.html', pathToMetaData + 'savedrecs ' + '(0).html')
+
 	# change the default download directory to PDF directory
 	chromeOptions = webdriver.ChromeOptions()
 	prefs = {"download.default_directory": pathToPDF}
 	chromeOptions.add_experimental_option("prefs", prefs)
 
-	df = getMetaDataDataframe(chromeOptions)
+	getMetaDataDataframe(chromeOptions)
+	df.to_csv(pathToMetaDataTSV, sep="\t")
 
 	print(df)
 	print(Counter(domains))
 
 
 if __name__ == '__main__':
-	main()
+	try:
+		main()
+	except KeyboardInterrupt:
+		df.to_csv(pathToMetaDataTSV, sep="\t")
+
+		print(df)
+		print('Interrupted: ' + str(len(df.index)) + ' records')
 
 
 
