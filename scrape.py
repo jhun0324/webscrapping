@@ -110,12 +110,12 @@ def searchForKeyword(browser, keyword):
 	# numResults = int(results.text.replace(",", ""))
 
 	# manually specify the number of meta data you want to download
-	numResults = 580
+	numResults = 2000
 	return numResults
 
 
 def downloadMetaDataHtml(browser, numResults):
-	for i in range(len(df.index)+1, numResults+1, 500):
+	for i in range(len(df.index)+1001, numResults+1, 500):
 		# choose 'Save to Other File Formats'
 		saveToMenu = browser.find_element_by_id("saveToMenu")
 		Select(saveToMenu).select_by_visible_text("Save to Other File Formats")
@@ -159,7 +159,6 @@ def downloadMetaDataHtml(browser, numResults):
 
 
 def getMetaDataDataframe(chromeOptions):
-	# df = pd.DataFrame(columns=['DOI', 'title', 'author', 'downloaded', 'address', 'author countries'])
 	dataFrameIndex = len(df.index) + 1
 
 	for filename in os.listdir(pathToMetaData):
@@ -189,16 +188,19 @@ def getMetaDataDataframe(chromeOptions):
 				doi = article.find('td', string='DI ').next_sibling.text.strip()
 				if doi in df['DOI']:
 					continue
-				author = re.sub(r'\n+\s+', '; ', article.find('td', string='AU ').next_sibling.text.strip())
-				title = re.sub(r'\s+', ' ', article.find('td', string='TI ').next_sibling.text.strip())
-				downloaded = process_doi(doi, chromeOptions)
-				addresses = list(article.find('td', string='C1 ').next_sibling.stripped_strings)
-				addresses = [re.sub(r'\.$', '', re.sub(r'\s+', ' ', address)) for address in addresses]
-				address = '; '.join(addresses)
-				authorCountries = extractAuthorCountries(addresses)
-				df.loc[dataFrameIndex] = [doi, title, author, downloaded, address, authorCountries]
-				dataFrameIndex += 1
-	# return df
+				try:
+					author = re.sub(r'\n+\s+', '; ', article.find('td', string='AU ').next_sibling.text.strip())
+					title = re.sub(r'\s+', ' ', article.find('td', string='TI ').next_sibling.text.strip())
+					downloaded = process_doi(doi, chromeOptions)
+					addresses = list(article.find('td', string='C1 ').next_sibling.stripped_strings)
+					addresses = [re.sub(r'\.$', '', re.sub(r'\s+', ' ', address)) for address in addresses]
+					address = '; '.join(addresses)
+					authorCountries = extractAuthorCountries(addresses)
+					df.loc[dataFrameIndex] = [doi, title, author, downloaded, address, authorCountries]
+					dataFrameIndex += 1
+					print(dataFrameIndex)
+				except AttributeError:
+					continue
 
 
 def isArticleKeywordsInGivenKeywords(articleKeywords):
