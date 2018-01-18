@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 import re
 import time
@@ -109,7 +110,7 @@ def searchForKeyword(browser, keyword):
 	# numResults = int(results.text.replace(",", ""))
 
 	# manually specify the number of meta data you want to download
-	numResults = 1000
+	numResults = 580
 	return numResults
 
 
@@ -169,7 +170,7 @@ def getMetaDataDataframe(chromeOptions):
 		indicatorList = soup.findAll('table')
 
 		numOfIndicator = len(indicatorList)
-		print(numOfIndicator)
+
 		for i in range(numOfIndicator):
 			article = indicatorList[i]
 			if hasAuthorKeywords(article):
@@ -254,11 +255,11 @@ def savefile(html):
 def downloadpdf(pdfurl, filename):
 	try:
 		pdfresponse = requests.get(pdfurl)
-	except requests.exceptions.ConnectionError:
-		print("Request was denied. Sleep for 5 seconds...")
+	except:
+		print("Connection refused by the server..")
 		time.sleep(5)
 		pdfresponse = requests.get(pdfurl)
-		print("Request accepted")
+		print("Start downloading again...")
 
 	file = open(pathToPDF + filename + '.pdf', 'wb')
 	file.write(pdfresponse.content)
@@ -278,55 +279,69 @@ def process_doi(doi, chromeOptions):
 			True if pdf file is successfully downloaded.
 			False if downloading failed
 	"""
+	# we are using the DOI to name the pdf files, however DOIs contain forward slashes which interfere with
+	# path notation, so we replace slashes with underscores for the file names
 	doi_underscored = doi.replace('/', '_')
+	if os.path.exists(pathToPDF + doi_underscored + '.pdf'):
+		return True
 	browser = webdriver.Chrome(executable_path=os.getcwd() + os.sep + 'chromedriver', chrome_options=chromeOptions)
-	browser.get('http://doi.org/' + doi)
+	try:
+		browser.get('http://doi.org/' + doi)
+	except Exception as e:
+		print("Error when accessing doi url: ", e)
+		browser.quit()
+		return False
 	currentUrl = browser.current_url
 	downloaded = navigate_to_pdf(currentUrl, browser, doi_underscored)
-	browser.close()
+	browser.quit()
 	return downloaded
 
 
 def navigate_to_pdf(currentUrl, browser, doi_underscored):
 	domain = urlparse(currentUrl)[1]
 	domains.append(domain)
-	if domain == 'www.sciencedirect.com':
-		downloadpdfbutton = browser.find_element_by_partial_link_text("Download")
-		downloadpdfbutton.click()
-		getpdf = browser.find_element_by_link_text("Article")
+	try:
+		if domain == 'www.sciencedirect.com':
+			downloadpdfbutton = browser.find_element_by_partial_link_text("Download")
+			downloadpdfbutton.click()
+			getpdf = browser.find_element_by_link_text("Article")
 
-		# cannot just grab url from html because Python requests library does not redirect correctly to the PDF
-		getpdf.click()
-		browser.switch_to.window(browser.window_handles[1])
+			# cannot just grab url from html because Python requests library does not redirect correctly to the PDF
+			getpdf.click()
+			browser.switch_to.window(browser.window_handles[1])
 
-		# sometimes takes a while to redirect to the actual pdf, so we wait until it does redirect
-		while urlparse(browser.current_url)[1] == 'www.sciencedirect.com':
-			time.sleep(1)
-		pdfurl = browser.current_url
-		browser.close()
-		browser.switch_to.window(browser.window_handles[0])
-		# WE HAVE SCIENCEDIRECT PDFs!!!
-		return downloadpdf(pdfurl, doi_underscored)
-	elif domain == 'onlinelibrary.wiley.com':
-		getpdf = browser.find_element_by_xpath("//li[@class='article-support__item--pdf ']/a")  # find pdf button
-		pdfurl = getpdf.get_attribute('href')  # get link from pdf button
-		# go to this link (not pdf link yet, only links to a redirecting site)
-		r = requests.get(pdfurl, allow_redirects=True)
-		rsoup = BeautifulSoup(r.content, 'lxml')
-		realpdflink = rsoup.find("iframe", {"id": "pdfDocument"})[
-			'src']  # from redirected site, fish out the real pdf link
-		return downloadpdf(realpdflink, doi_underscored)
-		# WE HAVE WILEY ONLINE LIBRARY PDFs!!!
-	# elif domain == 'link.springer.com':
-	# 	pdfbutton = browser.find_element_by_xpath("//a[@title='Download this article in PDF format']")
-	# 	realpdflink = pdfbutton.get_attribute('href')
-	# 	return downloadpdf(realpdflink, doi_underscored)
-		# WE HAVE SPRINGER PDFs!!!
-	elif domain == 'www.mdpi.com':
-		pdfbutton = browser.find_element_by_link_text("Full-Text PDF")
-		realpdflink = pdfbutton.get_attribute('href')
-		return downloadpdf(realpdflink, doi_underscored)
-	return False
+			# sometimes takes a while to redirect to the actual pdf, so we wait until it does redirect
+			while urlparse(browser.current_url)[1] == 'www.sciencedirect.com':
+				time.sleep(1)
+			pdfurl = browser.current_url
+			browser.close()
+			browser.switch_to.window(browser.window_handles[0])
+			# WE HAVE SCIENCEDIRECT PDFs!!!
+			return downloadpdf(pdfurl, doi_underscored)
+		elif domain == 'onlinelibrary.wiley.com':
+			getpdf = browser.find_element_by_xpath("//li[@class='article-support__item--pdf ']/a")  # find pdf button
+			pdfurl = getpdf.get_attribute('href')  # get link from pdf button
+			# go to this link (not pdf link yet, only links to a redirecting site)
+			r = requests.get(pdfurl, allow_redirects=True)
+			rsoup = BeautifulSoup(r.content, 'lxml')
+			realpdflink = rsoup.find("iframe", {"id": "pdfDocument"})[
+				'src']  # from redirected site, fish out the real pdf link
+			return downloadpdf(realpdflink, doi_underscored)
+			# WE HAVE WILEY ONLINE LIBRARY PDFs!!!
+		elif domain == 'link.springer.com':
+			pdfbutton = browser.find_element_by_xpath("//a[@title='Download this article in PDF format']")
+			realpdflink = pdfbutton.get_attribute('href')
+			return downloadpdf(realpdflink, doi_underscored)
+			# WE HAVE SPRINGER PDFs!!!
+		elif domain == 'www.mdpi.com':
+			pdfbutton = browser.find_element_by_link_text("Full-Text PDF")
+			realpdflink = pdfbutton.get_attribute('href')
+			return downloadpdf(realpdflink, doi_underscored)
+		return False
+	except Exception as e:
+		print('Errored on ', currentUrl, '!! The error is as follows: ', e)
+		return False
+
 
 
 def main():
@@ -367,6 +382,7 @@ if __name__ == '__main__':
 		main()
 	except:
 		df.to_csv(pathToMetaDataTSV, sep="\t")
+
 		print(df)
 		print('Interrupted: ' + str(len(df.index)) + ' records')
 
