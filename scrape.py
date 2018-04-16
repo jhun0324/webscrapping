@@ -185,7 +185,7 @@ def getMetaDataDataframe(chromeOptions):
 			articleKeywords = authorKeywords + additionalKeywords
 
 			if isArticleKeywordsInGivenKeywords(articleKeywords) and hasDOI(article):
-				doi = article.find('td', string='DI ').next_sibling.text.strip()
+				doi = article.find('td', string='DI ').next_sibling.text.strip().replace('/', '_')
 				if doi in df['DOI']:
 					continue
 				try:
